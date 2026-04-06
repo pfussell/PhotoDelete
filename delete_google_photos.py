@@ -22,7 +22,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 
 GOOGLE_PHOTOS_URL = "https://photos.google.com"
-DEFAULT_BATCH_SIZE = 50
+DEFAULT_BATCH_SIZE = 100
 # Max photos Google lets you select/delete at once
 MAX_BATCH_SIZE = 500
 
@@ -110,7 +110,7 @@ def get_photo_checkboxes(page):
 
 def select_all_photos_in_view(page, batch_size):
     """
-    Select photos using JavaScript clicks to bypass overlay interception.
+    Select photos by clicking each checkbox individually via JavaScript.
     Returns the number of photos selected.
     """
     checkboxes, selector = get_photo_checkboxes(page)
@@ -121,23 +121,20 @@ def select_all_photos_in_view(page, batch_size):
     if count_to_select == 0:
         return 0
 
-    # Click the first checkbox using JavaScript to bypass overlays
-    first = checkboxes[0]
-    first.dispatch_event("click")
-    time.sleep(0.5)
+    # Click all checkboxes in one JavaScript call for speed
+    selected = page.evaluate("""(args) => {
+        const [selector, count] = args;
+        const boxes = document.querySelectorAll(selector);
+        let clicked = 0;
+        for (let i = 0; i < Math.min(boxes.length, count); i++) {
+            boxes[i].dispatchEvent(new MouseEvent('click', {bubbles: true}));
+            clicked++;
+        }
+        return clicked;
+    }""", [selector, count_to_select])
 
-    # Shift-click the last one to select a range
-    if count_to_select > 1:
-        last = checkboxes[count_to_select - 1]
-        # Use evaluate to dispatch a shift+click event
-        last.evaluate("""el => {
-            el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, shiftKey: true}));
-            el.dispatchEvent(new MouseEvent('click', {bubbles: true, shiftKey: true}));
-            el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, shiftKey: true}));
-        }""")
-
-    time.sleep(0.5)
-    return count_to_select
+    time.sleep(1)
+    return selected
 
 
 def get_selected_count(page):
